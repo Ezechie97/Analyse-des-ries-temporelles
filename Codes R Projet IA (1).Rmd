@@ -1,0 +1,152 @@
+---
+title: "Projet IA"
+author: "Assovie_Ezechiel"
+date: "19/05/2022"
+output: pdf_document
+---
+
+```{r}
+library(shiny)
+library(plotly)
+library(shinythemes)
+library(zoo)
+library(dplyr)
+library(tseries)
+library(forecast)
+library(stats)
+library(readr)
+setwd("C:/Users/33656/Documents/IAschool/Projet1")
+
+Data1 <- read_csv("importation_petrole.csv")
+Data2 <- read_csv("CHIFFRE D'AFFAIRE.csv")
+
+ui <- fluidPage(theme = shinytheme("superhero"),
+  
+ 
+   plotlyOutput('t',width = "100%",height ='600px'),
+                     
+ 
+  hr(),
+
+
+fluidRow(
+  column(4,wellPanel(
+        selectInput('series1', "Choix d'Une Series",choices = c(" ","Prix du Baril de pétrole","Carburant"),multiple=TRUE)
+        )
+      ),
+
+   column(4,wellPanel(      
+           selectInput('series2', "Visuel de l'analyse ",choices = c('','Nuage de Points','Plot',
+                  'Histogramme','Boxplot','Stationnarité',"Fonction d'autocorrélation","Fonction d'autocorrélation partielle",'Prédiction', 'Acf_residus','Courbe_Residus'))
+           )
+          ),
+  column(4,wellPanel(
+    sliderInput('slid','Horizon de Prédiction',value=12,min=12,max=240,step=12)
+  ))
+   ),
+  
+  fluidRow(
+    column(3,
+           actionButton('s','Activation')),
+    column(3,wellPanel(
+           numericInput('choix1', "Niveau d'Autoregression",NA, min = 0, max =NA))),
+    column(3,wellPanel(
+           numericInput('choix2', "Niveau d'intégration",NA, min =0, max =NA))),
+    column(3,wellPanel(
+           numericInput("choix3", "Niveau de moyenne mobile",NA, min = 0, max = NA)
+           ))),
+    
+    )
+
+
+server <- function(input, output){
+  
+  D<-cbind(Data1[37:111,]$`Prix en euros`,Data2$Carburant)
+  colnames(D)<-c('Prix du Baril de pétrole','Carburant')
+
+  p1=reactive(plot_ly(x= D[,input$series1], type = "histogram",name=paste('Histogramme du',input$series1))%>%layout(title=paste('Histogramme du',input$series1)))
+  
+  p2=reactive(plot_ly(y = D[,input$series1], type = "box",name=paste('Boîte à moustaches du',input$series1))%>%layout(title=paste('Boîte à moustaches du',input$series1)))
+  
+  p3=reactive(plot_ly(y = D[,input$series1],type = "scatter", mode = "lines")%>%layout(title=input$series1))
+              
+              
+  p4=reactive(plot_ly(y = D[,input$series1], type = "scatter",name=paste('Nuage de points du',input$series1))%>%layout(title=paste('Nuage de points du',input$series1)))
+  
+  p5=reactive(
+    plot_ly(y=D[,input$series1],type='scatter',mode='lines',name=input$series1)%>%
+    add_lines(x=seq(1,72),y= rollapply(na.omit(D[,input$series1]-rollapply(D[,input$series1],  width= 4, FUN = mean)),  width= 4, FUN = sd),mode='lines',name="écar-type      mobile")%>%
+    add_lines(x=seq(1,72),y=rollapply(na.omit(D[,input$series1]-rollapply(D[,input$series1],  width= 4, FUN = mean)),width= 4, FUN = mean),mode = 'lines',name="moyenne mobile")%>%layout(title=paste('stationnairité',input$series1)))
+  
+  p6=reactive(
+    plot_ly(y=acf(D[,input$series1],plot=F)$acf[,,1],type='bar',name=paste('Autocorrélation du',input$series1))%>%
+      add_lines(x=seq(0,19),y= rep(0.5,20), type= 'lines',color='red',name=" 90% confiance")%>%
+      add_lines(x=seq(0,19),y= rep(-0.5,20), type= 'lines',color='red',name="90% confiance")%>%layout(title=paste('Autocorrélation du',input$series1)))
+  
+  p7=reactive(
+    plot_ly(y=pacf(D[,input$series1],plot=F)$acf[,,1],type='bar',name=paste('Autocorrélation partielle du',input$series1))%>%
+      add_lines(x=seq(0,19),y= rep(0.5,20), mode = 'lines',color='red',name="90% confiance")%>%
+      add_lines(x=seq(0,19),y= rep(-0.5,20), mode = 'lines',color='red',name="90% confiance")%>%layout(title=paste('Autocorrélation partielle du',input$series1)))
+  
+
+  p8=reactive(
+    plot_ly()%>%
+     add_trace(y =D[,input$series1], type = 'scatter', mode = 'lines',name=input$series1)%>%
+      
+      add_ribbons(x = time(forecast(arima(D[,input$series1],order=c(input$choix1,input$choix2,input$choix3) ),h=input$slid,level=c(80, 95))$mean), 
+      ymin = forecast(arima(D[,input$series1],order=c(input$choix1,input$choix2,input$choix3)),h=input$slid,level=c(80, 95))$lower[, 2],
+      ymax = forecast(arima(D[,input$series1],order=c(input$choix1,input$choix2,input$choix3)),h=input$slid,level=c(80, 95))$upper[, 2],
+      color = I('rgba(67,67,67,1)'), name = "95% confiance") %>%
+      
+      add_ribbons(x = time(forecast(arima(D[,input$series1],order= c(input$choix1,input$choix2,input$choix3)),h=input$slid,level=c(80, 95))$mean), 
+      ymin =forecast(arima(D[,input$series1],order=c(input$choix1,input$choix2,input$choix3)),h=input$slid,level=c(80, 95))$lower[, 1],
+      ymax =forecast(arima(D[,input$series1],order=c(input$choix1,input$choix2,input$choix3)),h=input$slid,level=c(80, 95))$upper[, 1],
+      color = I('rgba(49,130,189, 1)'), name = "80% confiance") %>%
+      
+      add_lines(x = time(forecast(arima(D[,input$series1],order=c(input$choix1,input$choix2,input$choix3)),
+      h=input$slid,level=c(80, 95))$mean), y = forecast(arima(D[,input$series1],
+      order=c(input$choix1,input$choix2,input$choix3)),h=input$slid,level=c(80, 95))$mean, 
+      color = I("blue"), name = "prédiction",hoveron = "points")%>%layout(title=paste('prédiction Arima du ',input$series1)))
+  
+  
+ p10=reactive(plot_ly(x=seq(-40,34,1),y=arima(D[,input$series1],order=c(input$choix1,input$choix2,input$choix3))$residuals,mode='lines',name=paste('Résidus du modèle arima du',input$series1))%>%
+          layout(title=paste('Résidus du modèle arima du',input$series1)))
+   
+ 
+
+p11=reactive(
+     plot_ly(y=acf(arima(D[,input$series1],order=c(input$choix1,input$choix2,input$choix3))$residuals,plot=F)$acf[,,1],type='bar',
+     name=paste('Autocorrélation des résidus du modèle arima du',input$series1))%>%
+     add_lines(x=seq(0,19),y= rep(0.25,20), type= 'lines',color='red',name="95% confiance")%>%
+     add_lines(x=seq(0,19),y= rep(-0.25,20), type= 'lines',color='red',name="95% confiance")%>%
+     layout(title=paste('Autocorrélation des résidus du modèle arima du',input$series1)))
+  
+ 
+ observeEvent(input$s,{
+    
+  if(input$series2=='Histogramme'){
+  output$t <- renderPlotly(p1())
+  }else if(input$series2=='Boxplot'){
+  output$t <- renderPlotly(p2())
+  }else if(input$series2=='Plot'){
+  output$t <- renderPlotly(p3())
+  }else if(input$series2=='Nuage de Points'){
+  output$t <- renderPlotly(p4())
+  }else if(input$series2=='Stationnarité'){
+  output$t <- renderPlotly(p5())
+  }else if(input$series2=="Fonction d'autocorrélation"){
+  output$t <- renderPlotly(p6())
+  }else if(input$series2=="Fonction d'autocorrélation partielle"){
+  output$t <- renderPlotly(p7())
+  }else if(input$series2=='Prédiction'){
+  output$t <- renderPlotly(p8())
+  }else if(input$series2=='Courbe_Residus'){
+  output$t <- renderPlotly(p10())
+  }else if(input$series2=='Acf_residus'){
+     output$t <- renderPlotly(p11())   }
+   })
+}
+shinyApp(ui=ui, server=server)
+ 
+```
+
